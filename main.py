@@ -15,8 +15,9 @@ class Bot(discord.Client):
         @self.event
         async def on_message(message: discord.Message):
             setdelay = re.findall(r'^\!slowmode set ([0-9]+)', message.content)
+            base = functions.load_json('whitelist.json')
             
-            if isinstance(message.channel, discord.TextChannel) and config.slowmode and not message.author.id in functions.load_json('whitelist.json')['whitelist']:
+            if isinstance(message.channel, discord.TextChannel) and config.slowmode and not (message.author.id in base['whitelist'] or message.channel.id in base['channel whitelist'] or True in list(map(lambda r: True if r.id in base['role whitelist'] else False, message.author.roles))):
                 if not message.author.id in who_cant_say:
                     who_cant_say[message.author.id] = datetime.now() + timedelta(seconds = config.delay)
                 else:
@@ -27,18 +28,24 @@ class Bot(discord.Client):
                         del who_cant_say[message.author.id]
                         
             if message.content.lower().startswith(commands.APPEND_TO_WHITELIST):
-                if len(message.mentions) == 1:
-                    base = functions.load_json('whitelist.json')
-                    if not message.mentions[0].id in base['whitelist']:
-                        base['whitelist'].append(message.mentions[0].id)
-                        functions.save_json('whitelist.json', base)
+                for var, key in [[message.mentions, 'whitelist'],[message.channel_mentions,'channel whitelist'],[message.role_mentions,'role whitelist']]:    
+                    if len(var) >= 1:
+                        for m in var:
+                            if not m.id in base[key]:
+                                base[key].append(m.id)
+                            
+                functions.save_json('whitelist.json', base)
+                    
             elif message.content.lower().startswith(commands.REMOVE_FROM_WHITELIST):
-                if len(message.mentions) == 1:
-                    base = functions.load_json('whitelist.json')
-                    if message.mentions[0].id in base['whitelist']:
-                        base['whitelist'].remove(message.mentions[0].id)
-                        functions.save_json('whitelist.json', base)
-            
+                
+                for var, key in [[message.mentions, 'whitelist'],[message.channel_mentions,'channel whitelist'],[message.role_mentions,'role whitelist']]:
+                    if len(var) >= 1:
+                        for m in var:
+                            if m.id in base[key]:
+                                base[key].remove(m.id)
+                    
+                functions.save_json('whitelist.json', base)
+                    
             elif setdelay:
                 if message.author.id == message.guild.owner_id:
                     config.delay = int(setdelay[0])
@@ -59,6 +66,20 @@ class Bot(discord.Client):
                     await self.send_dm('O slowmode foi desativado.', message)
                 else:
                     await self.send_dm('Apenas o dono do servidor pode ativar ou desativar o slow mode.', message)
+            
+            elif message.content.lower() == commands.TO_LIST and isinstance(message.channel, discord.TextChannel):
+                members = []
+                channels = []
+                roles = []
+                for ID in base['whitelist']:
+                    members.append(message.guild.get_member(ID).name)
+                for ID in base['channel whitelist']:
+                    channels.append(message.guild.get_channel(ID).name)
+                for ID in base['role whitelist']:
+                    roles.append(message.guild.get_roles(ID).name)
+                    
+                await self.send_dm(f'Whitelist:\nMembros: {",".join(members) if len(members) >= 1 else "Nenhum"}\nCanais: {",".join(channels) if len(channels) >= 1 else "Nenhum"}\nCargos: {",".join(roles) if len(roles) >= 1 else "Nenhum"}', message)
+                    
             
         self.run(config.TOKEN)
                     
